@@ -88,7 +88,7 @@ struct Worker: ff_monode_t<Task_t> {
 	if (!item->RW) {
 	    long tmp = some_global_state;
 	    some_global_state=0;
-	    usleep(5000);
+	    usleep(500000);
 	    some_global_state = tmp + 1;
 	} else 
 	    usleep(500);   // .... reads take more time
@@ -173,7 +173,7 @@ struct Scheduler: ff_node_t<Task_t> {
 };
 
 int main(int argc, char* argv[]) {
-    long niter = 10;
+    long niter = 1;
     if (argc > 1) {
 	niter=std::stol(std::string(argv[1]));
     }

@@ -37,66 +37,71 @@
  *    - February 2014 added AtomicFlagWrapper-based spin-lock
  *
  */
- 
+
 #ifndef FF_SPINLOCK_HPP
 #define FF_SPINLOCK_HPP
 
-// This code requires a c++11 compiler 
+// This code requires a c++11 compiler
 #include <ff/sysdep.h>
 #include <ff/platforms/platform.h>
 #include <ff/config.hpp>
 
-
 #if (__cplusplus >= 201103L) || (defined __GXX_EXPERIMENTAL_CXX0X__) || (defined(HAS_CXX11_VARIADIC_TEMPLATES))
 #include <atomic>
-namespace ff {
+namespace ff
+{
 #define _INLINE static inline
 
-ALIGN_TO_PRE(CACHE_LINE_SIZE) struct AtomicFlagWrapper {
+    ALIGN_TO_PRE(CACHE_LINE_SIZE)
+    struct AtomicFlagWrapper
+    {
 /* MA: MSVS 2013 does not allow initialisation of lock-free atomic_flag in the constructor. 
 	Before removing the conditional compilation we should double-check that initialisation with .clear() really works in 
     all platforms.  
 */
 #if defined(_MSC_VER)
-	AtomicFlagWrapper() {
-		F.clear();
-		}
+        AtomicFlagWrapper()
+        {
+            F.clear();
+        }
 #endif
-    // std::atomic_flag isn't copy-constructible, nor copy-assignable
-    
-    bool test_and_set(std::memory_order mo) {
-        return F.test_and_set(mo);
-    }
-    void clear(std::memory_order mo) {
-        F.clear(mo);
-    }	
+        // std::atomic_flag isn't copy-constructible, nor copy-assignable
+
+        bool test_and_set(std::memory_order mo)
+        {
+            return F.test_and_set(mo);
+        }
+        void clear(std::memory_order mo)
+        {
+            F.clear(mo);
+        }
 #if defined(_MSC_VER)
-	std::atomic_flag F;
+        std::atomic_flag F;
 #else
-    std::atomic_flag F=ATOMIC_FLAG_INIT;
+        std::atomic_flag F = ATOMIC_FLAG_INIT;
 #endif
-}ALIGN_TO_POST(CACHE_LINE_SIZE);
+    } ALIGN_TO_POST(CACHE_LINE_SIZE);
 
-typedef AtomicFlagWrapper lock_t[1];
+    typedef AtomicFlagWrapper lock_t[1];
 
-_INLINE void init_unlocked(lock_t) { }
-_INLINE void init_locked(lock_t)   { abort(); }
-_INLINE void spin_lock(lock_t l) { 
-    while(l->test_and_set(std::memory_order_acquire)) ;
-}
-_INLINE void spin_unlock(lock_t l) { l->clear(std::memory_order_release);}
-}
+    _INLINE void init_unlocked(lock_t) {}
+    _INLINE void init_locked(lock_t) { abort(); }
+    _INLINE void spin_lock(lock_t l)
+    {
+        while (l->test_and_set(std::memory_order_acquire))
+            ;
+    }
+    _INLINE void spin_unlock(lock_t l) { l->clear(std::memory_order_release); }
+} // namespace ff
 #else
-#pragma message ("FastFlow requires a c++11 compiler")
+#pragma message("FastFlow requires a c++11 compiler")
 #endif
-
 
 #if !defined(__GNUC__) && defined(_MSC_VER)
 // An acquire-barrier exchange, despite the name
 
-#define __sync_lock_test_and_set(_PTR,_VAL)  InterlockedExchangePointer( ( _PTR ), ( _VAL ))
+#define __sync_lock_test_and_set(_PTR, _VAL) InterlockedExchangePointer((_PTR), (_VAL))
 #endif
-
 
 #if defined(__GNUC__) || defined(_MSC_VER) || defined(__APPLE__)
 /*
@@ -112,63 +117,76 @@ _INLINE void spin_unlock(lock_t l) { l->clear(std::memory_order_release);}
  *
  */
 
-ALIGN_TO_PRE(CACHE_LINE_SIZE) struct CLHSpinLock {
-    typedef union CLHLockNode {
+ALIGN_TO_PRE(CACHE_LINE_SIZE)
+struct CLHSpinLock
+{
+    typedef union CLHLockNode
+    {
         bool locked;
         char align[CACHE_LINE_SIZE];
     } CLHLockNode;
-    
-    volatile ALIGN_TO_PRE(CACHE_LINE_SIZE) CLHLockNode *Tail                    ALIGN_TO_POST(CACHE_LINE_SIZE);
+
+    volatile ALIGN_TO_PRE(CACHE_LINE_SIZE) CLHLockNode *Tail ALIGN_TO_POST(CACHE_LINE_SIZE);
     volatile ALIGN_TO_PRE(CACHE_LINE_SIZE) CLHLockNode *MyNode[MAX_NUM_THREADS] ALIGN_TO_POST(CACHE_LINE_SIZE);
     volatile ALIGN_TO_PRE(CACHE_LINE_SIZE) CLHLockNode *MyPred[MAX_NUM_THREADS] ALIGN_TO_POST(CACHE_LINE_SIZE);
 
-    CLHSpinLock():Tail(NULL) {
-        for (int j = 0; j < MAX_NUM_THREADS; j++) {
+    CLHSpinLock() : Tail(NULL)
+    {
+        for (int j = 0; j < MAX_NUM_THREADS; j++)
+        {
             MyNode[j] = NULL;
             MyPred[j] = NULL;
         }
     }
-    ~CLHSpinLock() {
-        if (Tail) freeAlignedMemory((void*)Tail);
-        for (int j = 0; j < MAX_NUM_THREADS; j++) 
-            if (MyNode[j]) freeAlignedMemory((void*)(MyNode[j]));
+    ~CLHSpinLock()
+    {
+        if (Tail)
+            freeAlignedMemory((void *)Tail);
+        for (int j = 0; j < MAX_NUM_THREADS; j++)
+            if (MyNode[j])
+                freeAlignedMemory((void *)(MyNode[j]));
     }
-    int init() {
-        if (Tail != NULL) return -1;
-        Tail = (CLHLockNode*)getAlignedMemory(CACHE_LINE_SIZE, sizeof(CLHLockNode));
+    int init()
+    {
+        if (Tail != NULL)
+            return -1;
+        Tail = (CLHLockNode *)getAlignedMemory(CACHE_LINE_SIZE, sizeof(CLHLockNode));
         Tail->locked = false;
-        for (int j = 0; j < MAX_NUM_THREADS; j++) 
-            MyNode[j] = (CLHLockNode*)getAlignedMemory(CACHE_LINE_SIZE, sizeof(CLHLockNode));
-        
+        for (int j = 0; j < MAX_NUM_THREADS; j++)
+            MyNode[j] = (CLHLockNode *)getAlignedMemory(CACHE_LINE_SIZE, sizeof(CLHLockNode));
+
         return 0;
     }
 
     // FIX
-    inline void spin_lock(const int pid) {
+    inline void spin_lock(const int pid)
+    {
         MyNode[pid]->locked = true;
 #if defined(_MSC_VER) // To be tested
-    MyPred[pid] = (CLHLockNode *) __sync_lock_test_and_set((void *volatile *)&Tail, (void *)MyNode[pid]);
+        MyPred[pid] = (CLHLockNode *)__sync_lock_test_and_set((void *volatile *)&Tail, (void *)MyNode[pid]);
 #else //defined(__GNUC__)
-    MyPred[pid] = (CLHLockNode *) __sync_lock_test_and_set((long *)&Tail, (long)MyNode[pid]);
+        MyPred[pid] = (CLHLockNode *)__sync_lock_test_and_set((long *)&Tail, (long)MyNode[pid]);
 #endif
-    while (MyPred[pid]->locked == true) ;
+        while (MyPred[pid]->locked == true)
+            ;
     }
-    
-    inline void spin_unlock(const int pid) {
+
+    inline void spin_unlock(const int pid)
+    {
         MyNode[pid]->locked = false;
-        MyNode[pid]= MyPred[pid];
+        MyNode[pid] = MyPred[pid];
     }
-    
+
 } ALIGN_TO_POST(CACHE_LINE_SIZE);
-    
+
 typedef CLHSpinLock clh_lock_t[1];
 
-_INLINE void init_unlocked(clh_lock_t l) { l->init();}
+_INLINE void init_unlocked(clh_lock_t l) { l->init(); }
 _INLINE void init_locked(clh_lock_t) { abort(); }
 _INLINE void spin_lock(clh_lock_t l, const int pid) { l->spin_lock(pid); }
 _INLINE void spin_unlock(clh_lock_t l, const int pid) { l->spin_unlock(pid); }
 
-#endif 
+#endif
 /*
 #if !defined(__GNUC__) && defined(_MSC_VER)
 // An acquire-barrier exchange, despite the name
@@ -206,7 +224,7 @@ namespace ff {
 #if !defined(__GNUC__) && defined(_MSC_VER)
 // An acquire-barrier exchange, despite the name
 
-#define __sync_lock_test_and_set(_PTR,_VAL)  InterlockedExchangePointer( ( _PTR ), ( _VAL ))
+#define __sync_lock_test_and_set(_PTR, _VAL) InterlockedExchangePointer((_PTR), (_VAL))
 #endif
 
 #if defined(USE_TICKETLOCK)
@@ -257,7 +275,6 @@ static __always_inline void spin_unlock(lock_t lock)
          : "memory", "cc");
 }
 
-
 #else /* TICKET_LOCK  */
 
 
@@ -301,7 +318,7 @@ _INLINE void spin_lock(lock_t l) {
 }
 _INLINE void spin_unlock(lock_t l) { l->clear(std::memory_order_release);}
 
-#else  // non C++11
+#else // non C++11
 
 /* -------- XCHG-based spin-lock --------- */
     
@@ -318,7 +335,7 @@ _INLINE void init_locked(lock_t l)   { l[0]=!UNLOCKED;}
  *
  */
 
-#if (defined(_MSC_VER) || defined(__INTEL_COMPILER)) && defined(_WIN32)
+#if (defined(_MSC_VER) || defined(__INTEL_COMPILER)) && defined(WIN32)
 #include <WinBase.h>
 // windows platform
 _INLINE void spin_lock(lock_t l) {
@@ -336,7 +353,7 @@ _INLINE void spin_unlock(lock_t l) {
     l[0]=UNLOCKED;
 }
 
-#else // non windows platform
+#else  // non windows platform
 
 _INLINE void spin_lock(lock_t l) {
     while (xchg((int *)l, 1) != UNLOCKED) {
@@ -355,7 +372,6 @@ _INLINE void spin_unlock(lock_t l) {
 #endif // windows platform spin_lock
 #endif // C++11 check
 #endif // TICKET_LOCK
-
 
 #ifdef __cplusplus
 } // namespace ff

@@ -53,11 +53,16 @@
 using namespace ff;
 
 struct Worker: ff_node_t<long> {
+  volatile char dummy;
   long *svc(long *in) {
 
       volatile size_t i=0;
       while(i<1000) {
+          #ifdef WIN32
+          (void)dummy;
+          #else
           __asm__("nop");
+          #endif
           i = i +1;
       }
       

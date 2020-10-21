@@ -113,7 +113,7 @@ int main() {
     Last  last;
     Emitter E;
     Collector C(nworkers);
-    ff_Farm<long,long> farm(  []() { 
+    ff_Farm<long,long> farm(  [&]() { 
 	    std::vector<std::unique_ptr<ff_node> > W;
 	    for(size_t i=0;i<nworkers;++i)  W.push_back(make_unique<Worker>());
 	    return W;

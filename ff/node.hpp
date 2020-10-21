@@ -46,7 +46,6 @@
 #include <ff/barrier.hpp>
 #include <atomic>
 
-
 namespace ff {
 
 static void* FF_EOS           = (void*)(ULLONG_MAX);     /// automatically propagated

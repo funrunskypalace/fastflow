@@ -76,9 +76,9 @@ int main() {
     pipe.add_stage(&pipe2);
     pipe.run_and_wait_end();
 #else
-    ff_Pipe pipeI(s2,s3);
+    ff_Pipe<Stage2, Stage3> pipeI(s2, s3);
     pipeI.wrap_around();
-    ff_Pipe pipe(s1,pipeI);
+    ff_Pipe<Stage1, ff_Pipe<Stage2, Stage3>> pipe(s1, pipeI);
     if (pipe.run_and_wait_end()<0) {
         error("running pipe\n");
         return -1;
